@@ -1,0 +1,32 @@
+seed: 42
+
+swarm:
+  N: 50
+  world_size: 100.0
+  dt: 0.1
+  rollout_horizon: 30
+
+formation: random
+
+physics:
+  max_speed: 3.0
+  separation_radius: 5.0
+  alignment_radius: 15.0
+  cohesion_radius: 20.0
+  w_sep: 1.5
+  w_ali: 1.0
+  w_coh: 0.8
+
+rssi:
+  sparsity: 0.15
+  noise_std: 2.0
+  path_loss_exp: 2.5
+
+koopman:
+  obs_dim: 6
+  reg: 0.0001
+  rls_forgetting: 0.98
+  forecast_steps: 18
+
+noise:
+  level: 0.05

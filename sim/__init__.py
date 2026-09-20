@@ -1,0 +1,1 @@
+﻿"""Swarm simulation environment package."""

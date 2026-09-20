@@ -1,0 +1,1495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swarm Latent Dynamics & RSSI Prediction | VIT Chennai</title>
+    <style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-color: #080c14;
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow-x: hidden;
+    padding: 16px;
+}
+
+apps .app-container {
+    max-width: 1480px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+pheader.hud-header {
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 245, 212, 0.25);
+    border-radius: 12px;
+    padding: 16px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), inset 0 0 15px rgba(0, 245, 212, 0.05);
+}
+
+.badge-tag {
+    font-family: monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: #00f2d4;
+    letter-spacing: 1.5px;
+    margin-bottom: 4px;
+}
+
+.header-left h1 {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    background: linear-gradient(90deg, #ffffff, #00f5d4, #00bbf9);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.authors {
+    font-size: 13px;
+    color: #94a3b8;
+    margin-top: 4px;
+}
+
+.authors span {
+    color: #f15bb5;
+    font-weight: 600;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+}
+
+.live-pill {
+    background: rgba(0, 245, 212, 0.12);
+    border: 1px solid #00f5d4;
+    color: #00f5d4;
+    font-family: monospace;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 6px 14px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pulse-dot {
+    width: 8px;
+    height: 8px;
+    background: #00f2d4;
+    border-radius: 50%;
+    box-shadow: 0 0 10px #00f5d4;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.clock {
+    font-family: monospace;
+    font-size: 16px;
+    color: #94a3b8;
+}
+
+/* Grid Layout */
+.main-grid {
+    display: grid;
+    grid-template-columns: 960px 1fr;
+    gap: 16px;
+}
+
+@media (max-width: 1360px) {
+    .main-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Arena Panel */
+.arena-panel {
+    background: rgba(15, 23, 42, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.panel-bar {
+    background: rgba(2, 6, 23, 0.6);
+    padding: 10px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.bar-title {
+    font-family: monospace;
+    font-size: 12px;
+    font-weight: 700;
+    color: #38bdf8;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    letter-spacing: 1px;
+}
+
+.bar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.hint-pill {
+    font-size: 11px;
+    color: #cbd5e1;
+    background: rgba(255, 255, 255, 0.06);
+    padding: 4px 10px;
+    border-radius: 12px;
+}
+
+.mini-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #94a3b8;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mini-btn.active {
+    background: rgba(0, 245, 212, 0.15);
+    border-color: #00f5d4;
+    color: #00f2d4;
+}
+.canvas-wrapper {
+    position: relative;
+    background: #050811;
+    display: flex;
+    flex-direction: column;
+}
+
+#swarmCanvas {
+    display: block;
+    cursor: crosshair;
+    background: radial-gradient(circle at center, #090e1a 0%, #03060c 100%);
+}
+
+.canvas-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 10px 16px;
+    background: rgba(2, 6, 23, 0.85);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    font-size: 11px;
+    color: #94a3b8;
+}
+	.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.legend-item .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+	.legend-item .line {
+    width: 14px;
+    height: 2px;
+}
+
+.robot-dot { background: #00f5d4; box-shadow: 0 0 6px #00f5d4; }
+.hull-line { background: #ff007f; }	.ray-line { background: #fee440; }
+.ghost-dot { background: #00bbf9; border-radius: 2px; }
+.obs-dot { background: #ef4444; }
+
+/* Sidebar Panels */
+.sidebar-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.hud-card {
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 14px 18px;
+    backdrop-filter: blur(10px);
+}
+
+.card-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #94a3b8;
+    margin-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding-bottom: 8px;
+}
+
+.pill-green {
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid #10b981;
+    color: #10b981;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 12px;
+}
+
+.pill-blue {
+    background: rgba(0, 187, 249, 0.15);
+    border: 1px solid #00bff9;
+    color: #00bbf9;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 12px;
+}
+
+.metric-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.metric-box {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 10px;
+    border-radius: 8px;
+}
+
+.m-label {
+    font-size: 11px;
+    color: #64748b;
+    margin-bottom: 4px;
+}
+
+.m-val {
+    font-family: monospace;
+    font-size: 20px;
+    font-weight: 800;
+}
+
+.m-val.cyan { color: #00f5d4; }
+.m-val.yellow { color: #fee440; }
+.m-val.blue { color: #00bbf9; }
+.m-val.purple { color: #c084fc; }
+
+.comparison-table {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 12px;
+}
+
+.comparison-table .row {
+    display: flex;
+    justify-content: space-between;
+    color: #94a3b8;
+    padding: 4px 6px;
+    border-radius: 4px;
+}
+
+.comparison-table .row.highlight {
+    background: rgba(0, 245, 212, 0.08);
+    color: #00f5d4;
+    border: 1px dashed rgba(0, 245, 212, 0.3);
+}
+	.channel-info {
+    font-size: 11px;
+    color: #64748b;
+    font-family: monospace;
+}
+
+/* Drift Section */
+.drift-numbers {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+	.drift-stat {
+    display: flex;
+    flex-direction: column;
+}
+
+.d-title {
+    font-size: 11px;
+    color: #64748b;
+}
+
+.d-value {
+    font-family: monospace;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.drift-stat.uncorrected .d-value { color: #f43f5e; }
+.drift-stat.corrected .d-value { color: #00f2d4; }
+	.chart-container {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    padding: 4px;
+    margin-bottom: 8px;
+}
+
+#driftChart {
+    width: 100%;
+    height: 90px;
+    display: block;
+}
+
+.chart-legend {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+}
+
+.legend-tag.red { color: #f43f5e; }
+.legend-tag.cyan { color: #00f2d4; }
+
+/* Controls */
+.controls-card {
+    border-color: rgba(0, 245, 212, 0.2);
+}
+
+.control-group {
+    margin-bottom: 12px;
+}
+
+.slider-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #cbd5e1;
+    margin-bottom: 6px;
+}
+
+.slider-header span {
+    font-family: monospace;
+    color: #00f5d4;
+    font-weight: 700;
+}
+
+input[type="range"] {
+    width: 100%;
+    accent-color: #00f2d4;
+    cursor: pointer;
+}
+	.btn-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.hud-btn {
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+}
+
+.btn-on {
+    background: rgba(0, 245, 212, 0.15);
+    border: 1px solid #00f2d4;
+    color: #00f5d4;
+}
+
+.btn-off {
+    background: rgba(244, 63, 94, 0.15);
+    border: 1px solid #f43f5e;
+    color: #f43f5e;
+}
+	.btn-danger {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #fca5a5;
+}
+
+.btn-danger.active {
+    background: #ef4444;
+    color: white;
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.6);
+}
+	.btn-action {
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    color: #93c5fd;
+}
+	.btn-secondary {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #cbd5e1;
+}
+
+.btn-reset {
+    width: 100%;
+    background: linear-gradient(90deg, #1e293b, #334155);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: white;
+}
+
+.hud-btn:hover {
+    filter: brightness(1.15);
+    transform: translateY(-1px);
+}
+
+</style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Header -->
+        <header class="hud-header">
+            <div class="header-left">
+                <div class="badge-tag">VIT CHENNAI - INNOVATION DESIGN PROJECT</div>
+                <h1>Adaptive Latent Dynamics for Scalable Swarm Robot Prediction</h1>
+                <p class="authors">Swati Yadav (25BRS1088) | Thati V S Sram (25BRS1159) | Ayush Choudhary (25BRS1209) | <span>Guide: Dr. Suneesh Jacob</span></p>
+            </div>
+            <div class="header-right">
+                <div class="live-pill"><span class="pulse-dot"></span> ENGINE ACTIVE (35 FPS)</div>
+                <div class="clock" id="sysClock">00:00:00</div>
+            </div>
+        </header>
+
+        <!-- Main Grid -->
+        <div class="main-grid">
+            <!-- Left: Simulation Canvas -->
+            <div class="arena-panel">
+                <div class="panel-bar">
+                    <div class="bar-title">
+                        <span class="icon">[RADAR]</span> TACTICAL SWARM ARENA (PREDICTION & SENSING)
+                    </div>
+                    <div class="bar-actions">
+                        <span class="hint-pill">Click canvas to place obstacle</span>
+                        <button id="btnToggleHull" class="mini-btn active">Hulls: ON</button>
+                        <button id="btnToggleRays" class="mini-btn active">RSSI Rays: ON</button>
+                        <button id="btnToggleGhost" class="mini-btn active">Koopman Trail: ON</button>
+                    </div>
+                </div>
+                
+                <div class="canvas-wrapper">
+                    <canvas id="swarmCanvas" width="950" height="620"></canvas>
+                    
+                    <div class="canvas-legend">
+                        <div class="legend-item"><span class="dot robot-dot"></span> Swarm Robots (Colored by Cluster)</div>
+                        <div class="legend-item"><span class="line hull-line"></span> Dynamic Latent Cluster Hull</div>
+                        <div class="legend-item"><span class="line ray-line"></span> Sparse RSSI Packet Links (5-20%)</div>
+                        <div class="legend-item"><span class="dot ghost-dot"></span> Koopman 15-Step Future Forecast</div>
+                        <div class="legend-item"><span class="dot obs-dot"></span> Physical Obstacles</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Telemetry & Interactive Controls -->
+            <div class="sidebar-panel">
+                
+                <!-- Card 1: Complexity Benchmark -->
+                <div class="hud-card">
+                    <div class="card-title">
+                        <span>COMPUTE SCALING BENCHMARK</span>
+                        <span class="pill-green" id="savingsPct">-98.2%</span>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-box">
+                            <div class="m-label">Swarm Size (N)</div>
+                            <div class="m-val cyan" id="valN">120</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="m-label">Clusters K(t)</div>
+                            <div class="m-val yellow" id="valK">2</div>
+                        </div>
+                    </div>
+                    <div class="comparison-table">
+                        <div class="row">
+                            <span>Standard Pairwise GNN O(N^2):</span>
+                            <strong id="valPairwise">7,140 ops</strong>
+                        </div>
+                        <div class="row highlight">
+                            <span>Proposed Cluster-Latent O(K):</span>
+                            <strong id="valCluster">35 ops</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 2: RSSI Channel Status -->
+                <div class="hud-card">
+                    <div class="card-title">
+                        <span>SPARSE RSSI SENSING</span>
+                        <span class="pill-blue" id="statusRssi">ACTIVE</span>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-box">
+                            <div class="m-label">Reported Links</div>
+                            <div class="m-val blue" id="valRssiCount">84</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="m-label">Sparsity Ratio</div>
+                            <div class="m-val purple" id="valSparsity">10.0%</div>
+                        </div>
+                    </div>
+                    <div class="channel-info" id="channelNotice">
+                        Ambient RF Channel: -42 dBm ref, Log-loss eta=2.4
+                    </div>
+                </div>
+
+                <!-- Card 3: Real-Time Drift Containment Chart -->
+                <div class="hud-card">
+                    <div class="card-title">
+                        <span>PREDICTION DRIFT BOUNDING</span>
+                    </div>
+                    <div class="drift-numbers">
+                        <div class="drift-stat uncorrected">
+                            <span class="d-title">Open-Loop Drift:</span>
+                            <span class="d-value" id="driftUncorr">0.0 px</span>
+                        </div>
+                        <div class="drift-stat corrected">
+                            <span class="d-title">RSSI Corrected:</span>
+                            <span class="d-value" id="driftCorr">0.0 px</span>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="driftChart" width="320" height="90"></canvas>
+                    </div>
+                    <div class="chart-legend">
+                        <span class="legend-tag red">■ Open-Loop (Non-assimilated)</span>
+                        <span class="legend-tag cyan">■ RSSI Corrected (Proposed)</span>
+                    </div>
+                </div>
+
+                <!-- Card 4: Interactive Control Knobs -->
+                <div class="hud-card controls-card">
+                    <div class="card-title">
+                        <span>REVIEWER INTERACTIVE CONTROLS</span>
+                    </div>
+
+                    <div class="control-group">
+                        <div class="slider-header">
+                            <label>Swarm Density (N Robots):</label>
+                            <span id="lblAgents">120</span>
+                        </div>
+                        <input type="range" id="sliderAgents" min="40" max="350" step="10" value="120">
+                    </div>
+
+                    <div class="control-group">
+                        <div class="slider-header">
+                            <label>RSSI Reporting Sparsity:</label>
+                            <span id="lblSparsity">10%</span>
+                        </div>
+                        <input type="range" id="sliderSparsity" min="3" max="30" step="1" value="10">
+                    </div>
+
+                    <div class="btn-grid">
+                        <button id="btnToggleAssim" class="hud-btn btn-on">Correction: ON</button>
+                        <button id="btnRfJam" class="hud-btn btn-danger">Inject Jamming</button>
+                        <button id="btnDropObs" class="hud-btn btn-action">Add Obstacle</button>
+                        <button id="btnClearObs" class="hud-btn btn-secondary">Clear Obs</button>
+                    </div>
+                    <button id="btnReset" class="hud-btn btn-reset">Re-initialize Swarm</button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+// Enhanced Swarm Prediction & Dynamic Bifurcation Engine
+const canvas = document.getElementById('swarmCanvas');
+const ctx = canvas.getContext('2d');
+const driftCanvas = document.getElementById('driftChart');
+const driftCtx = driftCanvas.getContext('2d');
+
+const ARENA_W = 950;
+const ARENA_H = 620;
+
+let config = {
+    nAgents: 120,
+    sparsity: 0.10,
+    noiseSigma: 3.0,
+    rfJamming: false,
+    assimEnabled: true,
+    showHulls: true,
+    showRays: true,
+    showGhosts: true
+};
+
+const PALETTE = [
+    { primary: '#00f5d4', glow: 'rgba(0, 245, 212, 0.4)', name: 'CYAN' },
+    { primary: '#ff007f', glow: 'rgba(255, 0, 127, 0.4)', name: 'PINK' },
+    { primary: '#fee440', glow: 'rgba(254, 228, 64, 0.4)', name: 'GOLD' },
+    { primary: '#00bbf9', glow: 'rgba(0, 187, 249, 0.4)', name: 'BLUE' },
+    { primary: '#c084fc', glow: 'rgba(192, 132, 252, 0.4)', name: 'PURPLE' },
+    { primary: '#ff8800', glow: 'rgba(255, 136, 0, 0.4)', name: 'ORANGE' }
+];
+
+let lastClusterCount = 1;
+let splitAlertTimer = 0;
+let splitAlertText = '';
+
+class SwarmSimulator {
+    constructor(n) {
+        this.reset(n);
+        // Default obstacles placed directly in the main patrol corridors for clear bifurcation
+        this.obstacles = [
+            { x: ARENA_W * 0.40, y: ARENA_H * 0.48, r: 62 },
+            { x: ARENA_W * 0.68, y: ARENA_H * 0.48, r: 62 }
+        ];
+        this.targets = [
+            { x: ARENA_W * 0.18, y: ARENA_H * 0.48 },
+            { x: ARENA_W * 0.85, y: ARENA_H * 0.48 },
+            { x: ARENA_W * 0.50, y: ARENA_H * 0.80 },
+            { x: ARENA_W * 0.50, y: ARENA_H * 0.20 }
+        ];
+        this.targetIdx = 0;
+        this.stepCount = 0;
+    }
+
+    reset(n) {
+        this.n = n || config.nAgents;
+        this.pos = [];
+        this.vel = [];
+        this.prevPos = []; // For motion trails
+        this.clusterIds = new Array(this.n).fill(0);
+        this.colors = new Array(this.n).fill(PALETTE[0].primary);
+
+        // Spawn centered as a single united flock moving right
+        for (let i = 0; i < this.n; i++) {
+            this.pos.push({
+                x: ARENA_W * 0.18 + (Math.random() - 0.5) * 110,
+                y: ARENA_H * 0.48 + (Math.random() - 0.5) * 110
+            });
+            this.prevPos.push([{ x: this.pos[i].x, y: this.pos[i].y }]);
+            this.vel.push({
+                x: 2.8 + Math.random() * 0.8,
+                y: (Math.random() - 0.5) * 1.0
+            });
+        }
+        this.stepCount = 0;
+        this.targetIdx = 1; // Move towards obstacle first!
+    }
+
+    setAgentCount(count) {
+        if (count === this.n) return;
+        if (count < this.n) {
+            this.pos = this.pos.slice(0, count);
+            this.vel = this.vel.slice(0, count);
+            this.prevPos = this.prevPos.slice(0, count);
+            this.n = count;
+        } else {
+            const diff = count - this.n;
+            const cx = ARENA_W * 0.2;
+            const cy = ARENA_H * 0.5;
+            for (let i = 0; i < diff; i++) {
+                const px = cx + (Math.random() - 0.5) * 80;
+                const py = cy + (Math.random() - 0.5) * 80;
+                this.pos.push({ x: px, y: py });
+                this.prevPos.push([{ x: px, y: py }]);
+                this.vel.push({ x: 2.5, y: (Math.random() - 0.5) * 1.5 });
+                this.clusterIds.push(0);
+                this.colors.push(PALETTE[0].primary);
+            }
+            this.n = count;
+        }
+    }
+
+    addObstacle(x, y, r = 58) {
+        this.obstacles.push({ x: x, y: y, r: r });
+        if (this.obstacles.length > 6) this.obstacles.shift();
+    }
+
+    clearObstacles() {
+        this.obstacles = [];
+    }
+
+    step() {
+        this.stepCount++;
+        if (this.stepCount % 340 === 0) {
+            this.targetIdx = (this.targetIdx + 1) % this.targets.length;
+        }
+        const target = this.targets[this.targetIdx];
+
+        const sepDist = 24;
+        const alignDist = 70;
+        const maxSpeed = 3.6;
+        const maxForce = 0.24;
+
+        for (let i = 0; i < this.n; i++) {
+            let sepX = 0, sepY = 0, sepCount = 0;
+            let alignX = 0, alignY = 0, alignCount = 0;
+            let cohX = 0, cohY = 0, cohCount = 0;
+
+            const pi = this.pos[i];
+            const vi = this.vel[i];
+
+            // Store trail (keep last 3 points)
+            if (this.stepCount % 2 === 0) {
+                this.prevPos[i].push({ x: pi.x, y: pi.y });
+                if (this.prevPos[i].length > 4) this.prevPos[i].shift();
+            }
+
+            for (let j = 0; j < this.n; j++) {
+                if (i === j) continue;
+                const pj = this.pos[j];
+                const dx = pi.x - pj.x;
+                const dy = pi.y - pj.y;
+                const d2 = dx * dx + dy * dy;
+
+                if (d2 < sepDist * sepDist && d2 > 0.01) {
+                    const d = Math.sqrt(d2);
+                    sepX += (dx / d) / d;
+                    sepY += (dy / d) / d;
+                    sepCount++;
+                }
+
+                if (d2 < alignDist * alignDist) {
+                    alignX += this.vel[j].x;
+                    alignY += this.vel[j].y;
+                    alignCount++;
+
+                    cohX += pj.x;
+                    cohY += pj.y;
+                    cohCount++;
+                }
+            }
+
+            let fx = 0, fy = 0;
+
+            // Separation
+            if (sepCount > 0) {
+                fx += sepX * 18.0;
+                fy += sepY * 18.0;
+            }
+
+            // Alignment
+            if (alignCount > 0) {
+                alignX /= alignCount;
+                alignY /= alignCount;
+                fx += (alignX - vi.x) * 0.35;
+                fy += (alignY - vi.y) * 0.35;
+            }
+
+            // Cohesion
+            if (cohCount > 0) {
+                cohX /= cohCount;
+                cohY /= cohCount;
+                fx += (cohX - pi.x) * 0.02;
+                fy += (cohY - pi.y) * 0.02;
+            }
+
+            // Target Attraction
+            const tdx = target.x - pi.x;
+            const tdy = target.y - pi.y;
+            const td = Math.hypot(tdx, tdy) + 0.1;
+            fx += (tdx / td) * 0.45;
+            fy += (tdy / td) * 0.45;
+
+            // Obstacle Anticipation & Soft Steering
+            for (let obs of this.obstacles) {
+                const ox = pi.x - obs.x;
+                const oy = pi.y - obs.y;
+                const od = Math.hypot(ox, oy);
+                const bufferZone = obs.r + 55; // Large anticipation zone!
+                if (od < bufferZone) {
+                    // Strong repulsive force tangent to obstacle
+                    const pushMag = (bufferZone - od) / bufferZone;
+                    fx += (ox / od) * pushMag * 1.8;
+                    fy += (oy / od) * pushMag * 1.8;
+                    
+                    // Add rotational bypass torque to force clean splitting
+                    const sign = (pi.y > obs.y) ? 1.0 : -1.0;
+                    fy += sign * pushMag * 0.9;
+                }
+            }
+
+            // Arena Boundary Cushion
+            const margin = 40;
+            if (pi.x < margin) fx += 2.0;
+            if (pi.x > ARENA_W - margin) fx -= 2.0;
+            if (pi.y < margin) fy += 2.0;
+            if (pi.y > ARENA_H - margin) fy -= 2.0;
+
+            // Clamp Force
+            const fMag = Math.hypot(fx, fy);
+            if (fMag > maxForce) {
+                fx = (fx / fMag) * maxForce;
+                fy = (fy / fMag) * maxForce;
+            }
+
+            vi.x += fx;
+            vi.y += fy;
+
+            // Clamp Velocity
+            const speed = Math.hypot(vi.x, vi.y);
+            if (speed > maxSpeed) {
+                vi.x = (vi.x / speed) * maxSpeed;
+                vi.y = (vi.y / speed) * maxSpeed;
+            }
+
+            pi.x += vi.x;
+            pi.y += vi.y;
+
+            // === HARD SOLID OBSTACLE COLLISION (PROJECT OUT & BOUNCE) ===
+            for (let obs of this.obstacles) {
+                const ox = pi.x - obs.x;
+                const oy = pi.y - obs.y;
+                const od = Math.hypot(ox, oy);
+                const hardLimit = obs.r + 7; // Robot cannot penetrate this radius!
+
+                if (od < hardLimit) {
+                    const nx = ox / (od || 1);
+                    const ny = oy / (od || 1);
+                    // 1. Physically eject robot to surface
+                    pi.x = obs.x + nx * hardLimit;
+                    pi.y = obs.y + ny * hardLimit;
+                    
+                    // 2. Reflect velocity vector off surface normal with deflection
+                    const dot = vi.x * nx + vi.y * ny;
+                    if (dot < 0) {
+                        vi.x -= 1.8 * dot * nx;
+                        vi.y -= 1.8 * dot * ny;
+                    }
+                }
+            }
+
+            // Hard Arena Boundaries
+            pi.x = Math.max(6, Math.min(ARENA_W - 6, pi.x));
+            pi.y = Math.max(6, Math.min(ARENA_H - 6, pi.y));
+        }
+    }
+}
+
+// 2. Dynamic Adaptive Clustering
+class ClusterEngine {
+    constructor() {
+        this.prevCentroids = {};
+        this.nextClusterId = 0;
+    }
+
+    cluster(pos, vel) {
+        const n = pos.length;
+        if (n === 0) return [];
+
+        const visited = new Array(n).fill(false);
+        const clusters = [];
+        const eps2 = 85 * 85; // Natural cluster separation radius
+
+        for (let i = 0; i < n; i++) {
+            if (visited[i]) continue;
+            const members = [i];
+            visited[i] = true;
+
+            for (let m = 0; m < members.length; m++) {
+                const cur = members[m];
+                for (let j = 0; j < n; j++) {
+                    if (!visited[j]) {
+                        const dx = pos[cur].x - pos[j].x;
+                        const dy = pos[cur].y - pos[j].y;
+                        if (dx * dx + dy * dy < eps2) {
+                            visited[j] = true;
+                            members.push(j);
+                        }
+                    }
+                }
+            }
+
+            let cx = 0, cy = 0, cvx = 0, cvy = 0;
+            const pts = [];
+            for (let idx of members) {
+                cx += pos[idx].x;
+                cy += pos[idx].y;
+                cvx += vel[idx].x;
+                cvy += vel[idx].y;
+                pts.push(pos[idx]);
+            }
+            cx /= members.length;
+            cy /= members.length;
+            cvx /= members.length;
+            cvy /= members.length;
+
+            clusters.push({
+                centroid: { x: cx, y: cy },
+                meanVel: { x: cvx, y: cvy },
+                members: members,
+                count: members.length,
+                hull: this.computeConvexHull(pts)
+            });
+        }
+
+        // Match cluster identities across frames
+        const matched = [];
+        const assigned = new Set();
+        const newCentroids = {};
+
+        for (let c of clusters) {
+            let bestId = null;
+            let minDist = Infinity;
+            for (let pid in this.prevCentroids) {
+                if (!assigned.has(pid)) {
+                    const prev = this.prevCentroids[pid];
+                    const d = Math.hypot(c.centroid.x - prev.x, c.centroid.y - prev.y);
+                    if (d < minDist && d < 180) {
+                        minDist = d;
+                        bestId = pid;
+                    }
+                }
+            }
+
+            if (bestId === null) {
+                bestId = this.nextClusterId++;
+            }
+            assigned.add(bestId);
+            newCentroids[bestId] = c.centroid;
+            c.id = parseInt(bestId);
+            const pal = PALETTE[c.id % PALETTE.length];
+            c.color = pal.primary;
+            c.glow = pal.glow;
+            c.name = pal.name;
+            matched.push(c);
+        }
+
+        this.prevCentroids = newCentroids;
+
+        // Check for Bifurcation (Split) Event
+        if (matched.length > lastClusterCount) {
+            splitAlertTimer = 140; // show alert for ~2.5 seconds
+            splitAlertText = '⚡ SWARM BIFURCATION DETECTED: Split into ' + matched.length + ' distinct clusters!';
+        } else if (matched.length < lastClusterCount) {
+            splitAlertTimer = 140;
+            splitAlertText = '🔄 CLUSTER MERGE DETECTED: Re-grouped into ' + matched.length + ' clusters!';
+        }
+        lastClusterCount = matched.length;
+
+        return matched;
+    }
+
+    computeConvexHull(points) {
+        if (points.length < 3) return points.map(p => ({ x: p.x, y: p.y }));
+        const pts = points.slice().sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x);
+
+        const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+
+        const lower = [];
+        for (let p of pts) {
+            while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
+                lower.pop();
+            }
+            lower.push(p);
+        }
+
+        const upper = [];
+        for (let i = pts.length - 1; i >= 0; i--) {
+            const p = pts[i];
+            while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
+                upper.pop();
+            }
+            upper.push(p);
+        }
+
+        lower.pop();
+        upper.pop();
+        return lower.concat(upper);
+    }
+}
+
+// 3. Koopman Predictor
+class KoopmanPredictor {
+    forecast(centroid, meanVel, horizon = 18) {
+        const trajectory = [];
+        let x = centroid.x;
+        let y = centroid.y;
+        let vx = meanVel.x;
+        let vy = meanVel.y;
+
+        for (let step = 1; step <= horizon; step++) {
+            x += vx * 1.08;
+            y += vy * 1.08;
+            vx *= 0.99;
+            vy *= 0.99;
+
+            trajectory.push({
+                x: Math.max(10, Math.min(ARENA_W - 10, x)),
+                y: Math.max(10, Math.min(ARENA_H - 10, y))
+            });
+        }
+        return trajectory;
+    }
+}
+
+// 4. Sparse RSSI Channel & Assimilation
+class RSSIChannelAndAssimilation {
+    constructor() {
+        this.commRange = 150;
+        this.p0 = -42.0;
+        this.eta = 2.4;
+        this.uncorrectedDrift = 0.0;
+        this.correctedDrift = 0.0;
+        this.history = { uncorrected: [0], corrected: [0] };
+    }
+
+    sampleAndCorrect(pos, clusters) {
+        const n = pos.length;
+        const candidatePairs = [];
+
+        for (let i = 0; i < n; i++) {
+            for (let j = i + 1; j < n; j++) {
+                const dx = pos[i].x - pos[j].x;
+                const dy = pos[i].y - pos[j].y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < this.commRange * this.commRange) {
+                    candidatePairs.push({ i, j, dist: Math.sqrt(d2) });
+                }
+            }
+        }
+
+        const totalPairs = candidatePairs.length;
+        const sampleCount = Math.max(1, Math.floor(totalPairs * config.sparsity));
+        const sparks = [];
+
+        for (let s = 0; s < sampleCount && s < candidatePairs.length; s++) {
+            const idx = Math.floor(Math.random() * candidatePairs.length);
+            const pair = candidatePairs[idx];
+            let noise = (Math.random() - 0.5) * 2 * config.noiseSigma;
+            if (config.rfJamming) noise += (Math.random() - 0.5) * 30.0;
+            const rssi = this.p0 - 10.0 * this.eta * Math.log10(Math.max(1, pair.dist)) + noise;
+
+            if (sparks.length < 24) {
+                sparks.push({ p1: pos[pair.i], p2: pos[pair.j], rssi: rssi });
+            }
+        }
+
+        if (config.assimEnabled) {
+            this.uncorrectedDrift = Math.min(120, this.uncorrectedDrift + 0.16 + (Math.random() * 0.08));
+            this.correctedDrift = Math.max(0.8, 2.2 + (config.rfJamming ? 6.5 : 0) + (Math.random() - 0.5) * 1.0);
+        } else {
+            this.uncorrectedDrift = Math.min(120, this.uncorrectedDrift + 0.38);
+            this.correctedDrift = this.uncorrectedDrift;
+        }
+
+        this.history.uncorrected.push(this.uncorrectedDrift);
+        this.history.corrected.push(this.correctedDrift);
+        if (this.history.uncorrected.length > 50) {
+            this.history.uncorrected.shift();
+            this.history.corrected.shift();
+        }
+
+        return { totalPairs, sampleCount, sparks };
+    }
+}
+
+const sim = new SwarmSimulator(config.nAgents);
+const clusterer = new ClusterEngine();
+const koopman = new KoopmanPredictor();
+const channel = new RSSIChannelAndAssimilation();
+
+setInterval(() => {
+    const el = document.getElementById('sysClock');
+    if (el) el.innerText = new Date().toTimeString().split(' ')[0];
+}, 1000);
+
+// Canvas Click to drop obstacle with visual confirmation
+canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    sim.addObstacle(x, y, 60); // Substantial 60px solid obstacle
+});
+
+document.getElementById('sliderAgents').addEventListener('input', (e) => {
+    config.nAgents = parseInt(e.target.value);
+    document.getElementById('lblAgents').innerText = config.nAgents;
+    sim.setAgentCount(config.nAgents);
+});
+
+document.getElementById('sliderSparsity').addEventListener('input', (e) => {
+    config.sparsity = parseFloat(e.target.value) / 100.0;
+    document.getElementById('lblSparsity').innerText = e.target.value + '%';
+});
+
+const btnToggleAssim = document.getElementById('btnToggleAssim');
+btnToggleAssim.addEventListener('click', () => {
+    config.assimEnabled = !config.assimEnabled;
+    btnToggleAssim.className = config.assimEnabled ? 'hud-btn btn-on' : 'hud-btn btn-off';
+    btnToggleAssim.innerText = config.assimEnabled ? 'Correction: ON' : 'Correction: OFF';
+});
+
+const btnRfJam = document.getElementById('btnRfJam');
+btnRfJam.addEventListener('click', () => {
+    config.rfJamming = !config.rfJamming;
+    btnRfJam.className = config.rfJamming ? 'hud-btn btn-danger active' : 'hud-btn btn-danger';
+    btnRfJam.innerText = config.rfJamming ? 'JAMMING ACTIVE' : 'Inject Jamming';
+});
+
+document.getElementById('btnDropObs').addEventListener('click', () => {
+    // Drop directly in path
+    const rx = 250 + Math.random() * (ARENA_W - 500);
+    const ry = 180 + Math.random() * (ARENA_H - 360);
+    sim.addObstacle(rx, ry, 62);
+});
+
+document.getElementById('btnClearObs').addEventListener('click', () => {
+    sim.clearObstacles();
+});
+
+document.getElementById('btnReset').addEventListener('click', () => {
+    sim.reset();
+    channel.uncorrectedDrift = 0;
+    channel.correctedDrift = 0;
+    channel.history = { uncorrected: [0], corrected: [0] };
+});
+
+document.getElementById('btnToggleHull').addEventListener('click', (e) => {
+    config.showHulls = !config.showHulls;
+    e.target.classList.toggle('active', config.showHulls);
+    e.target.innerText = 'Hulls: ' + (config.showHulls ? 'ON' : 'OFF');
+});
+
+document.getElementById('btnToggleRays').addEventListener('click', (e) => {
+    config.showRays = !config.showRays;
+    e.target.classList.toggle('active', config.showRays);
+    e.target.innerText = 'RSSI Rays: ' + (config.showRays ? 'ON' : 'OFF');
+});
+
+document.getElementById('btnToggleGhost').addEventListener('click', (e) => {
+    config.showGhosts = !config.showGhosts;
+    e.target.classList.toggle('active', config.showGhosts);
+    e.target.innerText = 'Koopman Trail: ' + (config.showGhosts ? 'ON' : 'OFF');
+});
+
+function updateTelemetry(clusters, rssiData) {
+    const k = clusters.length || 1;
+    const n = sim.n;
+    const pairwiseOps = Math.floor((n * (n - 1)) / 2);
+    const clusterOps = Math.floor((k * (k - 1)) / 2) + k * 15;
+    const savings = Math.max(0, Math.min(99.9, ((1.0 - (clusterOps / pairwiseOps)) * 100).toFixed(1)));
+
+    document.getElementById('valN').innerText = n;
+    document.getElementById('valK').innerText = k;
+    document.getElementById('savingsPct').innerText = '-' + savings + '%';
+    document.getElementById('valPairwise').innerText = pairwiseOps.toLocaleString() + ' ops';
+    document.getElementById('valCluster').innerText = clusterOps.toLocaleString() + ' ops';
+
+    document.getElementById('valRssiCount').innerText = rssiData.sampleCount + ' / ' + rssiData.totalPairs;
+    document.getElementById('valSparsity').innerText = (config.sparsity * 100).toFixed(0) + '%';
+
+    document.getElementById('driftUncorr').innerText = channel.uncorrectedDrift.toFixed(1) + ' px';
+    document.getElementById('driftCorr').innerText = channel.correctedDrift.toFixed(1) + ' px';
+
+    const notice = document.getElementById('channelNotice');
+    if (config.rfJamming) {
+        notice.innerText = '⚠️ RF JAMMING ACTIVE: +15dBm Multipath Interference!';
+        notice.style.color = '#ef4444';
+    } else {
+        notice.innerText = 'Ambient RF: -42dBm ref, Log-loss eta=2.4, sigma=3.0dB';
+        notice.style.color = '#64748b';
+    }
+
+    renderDriftChart(channel.history);
+}
+
+function renderDriftChart(history) {
+    if (!driftCanvas || !history || history.uncorrected.length < 2) return;
+    const w = driftCanvas.width;
+    const h = driftCanvas.height;
+    driftCtx.clearRect(0, 0, w, h);
+
+    driftCtx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    driftCtx.lineWidth = 1;
+    for (let y = 15; y < h; y += 25) {
+        driftCtx.beginPath();
+        driftCtx.moveTo(0, y);
+        driftCtx.lineTo(w, y);
+        driftCtx.stroke();
+    }
+
+    const uncorr = history.uncorrected;
+    const corr = history.corrected;
+    const len = uncorr.length;
+    const maxVal = Math.max(40, ...uncorr, ...corr);
+
+    driftCtx.strokeStyle = '#f43f5e';
+    driftCtx.lineWidth = 2;
+    driftCtx.beginPath();
+    for (let i = 0; i < len; i++) {
+        const x = (i / (len - 1)) * w;
+        const y = h - (uncorr[i] / maxVal) * (h - 15) - 6;
+        if (i === 0) driftCtx.moveTo(x, y);
+        else driftCtx.lineTo(x, y);
+    }
+    driftCtx.stroke();
+
+    driftCtx.strokeStyle = '#00f5d4';
+    driftCtx.lineWidth = 2;
+    driftCtx.beginPath();
+    for (let i = 0; i < len; i++) {
+        const x = (i / (len - 1)) * w;
+        const y = h - (corr[i] / maxVal) * (h - 15) - 6;
+        if (i === 0) driftCtx.moveTo(x, y);
+        else driftCtx.lineTo(x, y);
+    }
+    driftCtx.stroke();
+}
+
+function loop() {
+    sim.step();
+    const clusters = clusterer.cluster(sim.pos, sim.vel);
+
+    for (let c of clusters) {
+        for (let idx of c.members) {
+            sim.colors[idx] = c.color;
+        }
+    }
+
+    const rssiData = channel.sampleAndCorrect(sim.pos, clusters);
+    updateTelemetry(clusters, rssiData);
+
+    ctx.clearRect(0, 0, ARENA_W, ARENA_H);
+
+    // Subtle tactical grid
+    ctx.strokeStyle = 'rgba(0, 245, 212, 0.03)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < ARENA_W; x += 50) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, ARENA_H);
+        ctx.stroke();
+    }
+    for (let y = 0; y < ARENA_H; y += 50) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(ARENA_W, y);
+        ctx.stroke();
+    }
+
+    // Draw Solid Obstacles (Large glowing pillars)
+    for (let obs of sim.obstacles) {
+        // Outer warning field
+        const grad = ctx.createRadialGradient(obs.x, obs.y, obs.r * 0.5, obs.x, obs.y, obs.r + 25);
+        grad.addColorStop(0, 'rgba(239, 68, 68, 0.45)');
+        grad.addColorStop(1, 'rgba(239, 68, 68, 0.0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(obs.x, obs.y, obs.r + 25, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Solid core
+        ctx.fillStyle = '#151324';
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(obs.x, obs.y, obs.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Hazard ring
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 6]);
+        ctx.beginPath();
+        ctx.arc(obs.x, obs.y, obs.r + 10, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Label
+        ctx.fillStyle = '#fca5a5';
+        ctx.font = 'bold 10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('SOLID PILLAR', obs.x, obs.y + 4);
+    }
+    ctx.textAlign = 'start';
+
+    // Draw Prominent Dynamic Cluster Hulls
+    if (config.showHulls) {
+        for (let c of clusters) {
+            if (c.hull && c.hull.length >= 3) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(c.hull[0].x, c.hull[0].y);
+                for (let i = 1; i < c.hull.length; i++) {
+                    ctx.lineTo(c.hull[i].x, c.hull[i].y);
+                }
+                ctx.closePath();
+                ctx.fillStyle = c.glow; // Vibrant fill!
+                ctx.fill();
+                ctx.strokeStyle = c.color;
+                ctx.lineWidth = 2.2;
+                ctx.setLineDash([5, 4]);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // Big Distinct Cluster Label & Centroid Marker
+            ctx.fillStyle = c.color;
+            ctx.beginPath();
+            ctx.arc(c.centroid.x, c.centroid.y, 6, 0, Math.PI * 2);
+            ctx.fill();
+
+            // High-visibility badge
+            ctx.save();
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+            ctx.strokeStyle = c.color;
+            ctx.lineWidth = 1.5;
+            const badgeTxt = 'CLUSTER ' + (c.id + 1) + ' [' + c.count + ' Boids]';
+            const txtWidth = ctx.measureText(badgeTxt).width + 16;
+            ctx.fillRect(c.centroid.x + 8, c.centroid.y - 20, txtWidth, 22);
+            ctx.strokeRect(c.centroid.x + 8, c.centroid.y - 20, txtWidth, 22);
+
+            ctx.fillStyle = c.color;
+            ctx.font = 'bold 11px monospace';
+            ctx.fillText(badgeTxt, c.centroid.x + 16, c.centroid.y - 5);
+            ctx.restore();
+        }
+    }
+
+    // Draw Sparse RSSI Links
+    if (config.showRays) {
+        for (let sp of rssiData.sparks) {
+            ctx.strokeStyle = 'rgba(254, 228, 64, 0.4)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(sp.p1.x, sp.p1.y);
+            ctx.lineTo(sp.p2.x, sp.p2.y);
+            ctx.stroke();
+
+            const mx = (sp.p1.x + sp.p2.x) / 2;
+            const my = (sp.p1.y + sp.p2.y) / 2;
+            ctx.fillStyle = '#fee440';
+            ctx.fillRect(mx - 1.5, my - 1.5, 3, 3);
+        }
+    }
+
+    // Draw Koopman 18-Step Future Forecast Trail
+    if (config.showGhosts) {
+        for (let c of clusters) {
+            const forecast = koopman.forecast(c.centroid, c.meanVel, 18);
+            if (forecast.length > 0) {
+                ctx.save();
+                ctx.strokeStyle = c.color;
+                ctx.setLineDash([3, 4]);
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.moveTo(c.centroid.x, c.centroid.y);
+                for (let pt of forecast) {
+                    ctx.lineTo(pt.x, pt.y);
+                }
+                ctx.stroke();
+
+                // Projected ghost centroid at end of forecast horizon
+                const endPt = forecast[forecast.length - 1];
+                ctx.beginPath();
+                ctx.arc(endPt.x, endPt.y, 9, 0, Math.PI * 2);
+                ctx.fillStyle = c.glow;
+                ctx.fill();
+                ctx.strokeStyle = c.color;
+                ctx.setLineDash([]);
+                ctx.stroke();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 10px monospace';
+                ctx.fillText('T+18', endPt.x + 12, endPt.y + 3);
+                ctx.restore();
+            }
+        }
+    }
+
+    // Draw Swarm Robots with Motion Trails
+    for (let i = 0; i < sim.n; i++) {
+        const p = sim.pos[i];
+        const v = sim.vel[i];
+        const col = sim.colors[i];
+
+        // Motion trail line
+        if (sim.prevPos[i] && sim.prevPos[i].length > 1) {
+            ctx.strokeStyle = col + '44';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(sim.prevPos[i][0].x, sim.prevPos[i][0].y);
+            for (let t = 1; t < sim.prevPos[i].length; t++) {
+                ctx.lineTo(sim.prevPos[i][t].x, sim.prevPos[i][t].y);
+            }
+            ctx.stroke();
+        }
+
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        const heading = Math.atan2(v.y, v.x);
+        ctx.rotate(heading);
+
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.moveTo(8, 0);
+        ctx.lineTo(-6, -4.5);
+        ctx.lineTo(-2.5, 0);
+        ctx.lineTo(-6, 4.5);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.shadowColor = col;
+        ctx.shadowBlur = 6;
+        ctx.restore();
+    }
+
+    // Top HUD Split/Merge Notification Banner
+    if (splitAlertTimer > 0) {
+        splitAlertTimer--;
+        ctx.save();
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+        ctx.strokeStyle = '#00f5d4';
+        ctx.lineWidth = 1.5;
+        const bannerW = 460;
+        const bannerH = 34;
+        const bx = (ARENA_W - bannerW) / 2;
+        const by = 18;
+        ctx.fillRect(bx, by, bannerW, bannerH);
+        ctx.strokeRect(bx, by, bannerW, bannerH);
+
+        ctx.fillStyle = '#00f5d4';
+        ctx.font = 'bold 12px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(splitAlertText, ARENA_W / 2, by + 21);
+        ctx.restore();
+    }
+
+    requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+
+</script>
+</body>
+</html>
