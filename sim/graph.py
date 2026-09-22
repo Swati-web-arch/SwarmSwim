@@ -24,14 +24,19 @@ import numpy as np
 def build_graph(
     state: np.ndarray,
     radius: float,
+    world_size: float | None = None,
 ) -> dict:
     """
     Build a proximity graph from a single state frame.
 
     Parameters
     ----------
-    state  : (N, 4) float array  [pos_x, pos_y, vel_x, vel_y]
-    radius : float  connection radius in world units
+    state      : (N, 4) float array  [pos_x, pos_y, vel_x, vel_y]
+    radius     : float  connection radius in world units
+    world_size : float, optional  arena side length. When given, pairwise
+                 distances use the TOROIDAL (wrap-around) shortest path,
+                 matching SwarmEnv's physics. None keeps plain Euclidean
+                 distances (backward compatible).
 
     Returns
     -------
@@ -54,6 +59,9 @@ def build_graph(
     # --- Pairwise distances (vectorised) ---
     # delta[i, j] = pos[j] - pos[i], shape (N, N, 2)
     delta = pos[np.newaxis, :, :] - pos[:, np.newaxis, :]
+    if world_size is not None:
+        # Toroidal shortest path (same convention as SwarmEnv)
+        delta = (delta + world_size / 2.0) % world_size - world_size / 2.0
     dist  = np.linalg.norm(delta, axis=2)              # (N, N)
 
     # --- Edge mask: within radius, no self-loops ---

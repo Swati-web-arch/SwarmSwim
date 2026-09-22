@@ -32,6 +32,7 @@ from sim.env import SwarmEnv
 from sim.dataset import generate_dataset, load_dataset, rollout
 from sim.graph import build_graph
 from models.train import train_koopman, load_koopman
+from models.train_gnn import load_gnn
 from models.gnn import GNNPredictor
 from baselines.constant_velocity import CVPredictor
 from baselines.mean_field import MeanFieldPredictor
@@ -103,9 +104,19 @@ def run_evaluation(
     # ── Instantiate models ────────────────────────────────────────────────────
     ckpt_path = pathlib.Path(ckpt_dir) / "koopman.npz"
     koopman = load_koopman(cfg, ckpt_path=str(ckpt_path))
-    gnn     = GNNPredictor(cfg, seed=int(cfg.get("seed", 42)))
-    cv      = CVPredictor(cfg)
-    mf      = MeanFieldPredictor(cfg)
+
+    # GNN: use trained weights when a checkpoint exists; otherwise the
+    # predictor keeps its (seeded) random init and results are meaningless.
+    gnn_ckpt = pathlib.Path(ckpt_dir) / "gnn.npz"
+    if gnn_ckpt.exists():
+        gnn = load_gnn(cfg, ckpt_path=str(gnn_ckpt))
+    else:
+        print(f"WARNING: {gnn_ckpt} not found — GNN uses RANDOM weights. "
+              f"Run models.train_gnn.train_gnn() first.")
+        gnn = GNNPredictor(cfg, seed=int(cfg.get("seed", 42)))
+
+    cv = CVPredictor(cfg)
+    mf = MeanFieldPredictor(cfg)
 
     radius = float(cfg["physics"]["alignment_radius"])
 

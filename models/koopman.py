@@ -58,11 +58,22 @@ class KoopmanPredictor:
 
         # Input dimension: per-agent state dim = 4 (pos_x, pos_y, vel_x, vel_y)
         self.state_dim = 4
+        self.world_size = float(cfg["swarm"]["world_size"])
+        self.v_max      = float(cfg["physics"]["max_speed"])
 
-        # Random RBF centres: shape (obs_dim, state_dim)
+        if self.obs_dim < 6:
+            raise ValueError(
+                "koopman.obs_dim must be >= 6: the toroidal Fourier basis "
+                "uses 6 base features (sin/cos of x and y, vx, vy)."
+            )
+
+        # Random RBF centres on the 6-D continuous base representation
+        # (used only when obs_dim > 6 to add extra lifted features)
         _seed = seed if seed is not None else int(cfg.get("seed", 42))
         rng = np.random.default_rng(_seed)
-        self._centres = rng.standard_normal((self.obs_dim, self.state_dim)).astype(np.float64)
+        self._centres = rng.uniform(
+            -1.0, 1.0, (self.obs_dim - 6, 6)
+        ).astype(np.float64)
         self._log_bw  = 0.0   # log bandwidth (learnable later; start at 1.0)
 
         # Koopman operator K: (obs_dim, obs_dim) -- filled by fit()
@@ -78,9 +89,54 @@ class KoopmanPredictor:
 
     # ── Lifting ───────────────────────────────────────────────────────────────
 
+    def _toroidal_base(self, state: np.ndarray) -> np.ndarray:
+        """
+        Continuous toroidal embedding of a raw state frame (N, 6).
+
+        The simulation wraps positions at world_size (toroidal arena), so RAW
+        coordinates are DISCONTINUOUS at the boundary (x: 99.9 -> 0.1). Any
+        basis built on raw coordinates inherits that discontinuity and wrecks
+        the linear-operator fit. Embedding the position angle theta = 2*pi*x/L
+        as (sin, cos) is continuous everywhere on the torus:
+
+            z_base = [sin(2*pi*x/L), cos(2*pi*x/L),
+                      sin(2*pi*y/L), cos(2*pi*y/L),
+                      vx / v_max,    vy / v_max]
+        """
+        state = np.asarray(state, dtype=np.float64)
+        L  = self.world_size
+        vm = self.v_max
+        th_x = 2.0 * np.pi * state[:, 0] / L
+        th_y = 2.0 * np.pi * state[:, 1] / L
+        return np.column_stack([
+            np.sin(th_x), np.cos(th_x),
+            np.sin(th_y), np.cos(th_y),
+            state[:, 2] / vm, state[:, 3] / vm,
+        ])
+
+    def _decode(self, Z: np.ndarray) -> np.ndarray:
+        """
+        Decode lifted features (N, obs_dim) back to raw states (N, 4).
+
+        Positions are recovered from the Fourier pair via atan2 (exact
+        inverse of the toroidal embedding, continuous across the wrap);
+        velocities from the normalised components.
+        """
+        L  = self.world_size
+        vm = self.v_max
+        x  = (np.arctan2(Z[:, 0], Z[:, 1]) * L / (2.0 * np.pi)) % L
+        y  = (np.arctan2(Z[:, 2], Z[:, 3]) * L / (2.0 * np.pi)) % L
+        vx = np.clip(Z[:, 4] * vm, -vm, vm)
+        vy = np.clip(Z[:, 5] * vm, -vm, vm)
+        return np.column_stack([x, y, vx, vy])
+
     def lift(self, state: np.ndarray) -> np.ndarray:
         """
-        Apply the RBF lifting map psi to a single frame.
+        Apply the lifting map psi to a single frame.
+
+        First 6 dims: toroidal Fourier features (continuous across the
+        periodic boundary). Remaining obs_dim-6 dims (if any): RBF features
+        of the continuous base representation with fixed centres.
 
         Parameters
         ----------
@@ -88,52 +144,60 @@ class KoopmanPredictor:
 
         Returns
         -------
-        Z : (N, obs_dim) float64  lifted features, L2-normalised per agent
+        Z : (N, obs_dim) float64  lifted features
         """
         state = np.asarray(state, dtype=np.float64)
-        # Normalise state to [-1, 1] range (assume world_size=100, speed<=3)
-        norm = np.array([100.0, 100.0, 3.0, 3.0], dtype=np.float64)
-        x = state / norm                                        # (N, 4)
-
-        # RBF: phi_k(x) = exp(-||x - c_k||^2 / bw)
-        bw = np.exp(self._log_bw)
-        diff = x[:, np.newaxis, :] - self._centres[np.newaxis, :, :]  # (N, d, 4)
-        sq_dist = np.sum(diff ** 2, axis=2)                            # (N, d)
-        Z = np.exp(-sq_dist / bw)                                      # (N, d)
-
-        # L2 normalise each row to stabilise K
-        norms = np.linalg.norm(Z, axis=1, keepdims=True).clip(min=1e-9)
-        Z = Z / norms
-        return Z.astype(np.float64)
+        base = self._toroidal_base(state)                    # (N, 6)
+        if self.obs_dim == 6:
+            return base
+        # Extra RBF features on the wrap-continuous base representation
+        bw   = np.exp(self._log_bw)
+        diff = base[:, np.newaxis, :] - self._centres[np.newaxis, :, :]
+        sq   = np.sum(diff ** 2, axis=2)                     # (N, d-6)
+        rbf  = np.exp(-sq / bw)
+        return np.hstack([base, rbf]).astype(np.float64)
 
     # ── Batch EDMD fit ────────────────────────────────────────────────────────
 
     def fit(self, traj: np.ndarray) -> "KoopmanPredictor":
         """
-        Fit Koopman operator K and readout W from a trajectory.
+        Fit Koopman operator K and readout W from trajectory data.
 
         Parameters
         ----------
-        traj : (T, N, 4)  single episode trajectory
+        traj : (T, N, 4) single episode OR (E, T, N, 4) stacked episodes.
+               All frames from all episodes are stacked into ONE EDMD
+               least-squares problem, so K is fitted on the full training
+               distribution instead of a single episode.
 
         Returns
         -------
         self  (for chaining)
         """
         traj = np.asarray(traj, dtype=np.float64)
-        T, N, _ = traj.shape
+        if traj.ndim == 3:                      # single episode (T, N, 4)
+            episodes = [traj]
+        elif traj.ndim == 4:                    # stacked episodes (E, T, N, 4)
+            episodes = list(traj)
+        else:
+            raise ValueError(
+                f"fit() expects (T, N, 4) or (E, T, N, 4), got shape {traj.shape}"
+            )
 
-        # Lift every frame: collect (T*N, obs_dim) matrices
+        # Lift every frame: collect (frames*N, obs_dim) matrices.
+        # Consecutive pairs are taken WITHIN each episode only.
         Z_list  = []   # z_t
         Zp_list = []   # z_{t+1}
         X_list  = []   # x_t  (for readout regression)
 
-        for t in range(T - 1):
-            Zt  = self.lift(traj[t])       # (N, d)
-            Ztp = self.lift(traj[t + 1])   # (N, d)
-            Z_list.append(Zt)
-            Zp_list.append(Ztp)
-            X_list.append(traj[t].astype(np.float64))
+        for ep in episodes:
+            T = ep.shape[0]
+            for t in range(T - 1):
+                Zt  = self.lift(ep[t])          # (N, d)
+                Ztp = self.lift(ep[t + 1])      # (N, d)
+                Z_list.append(Zt)
+                Zp_list.append(Ztp)
+                X_list.append(ep[t].astype(np.float64))
 
         Z  = np.vstack(Z_list)   # ((T-1)*N, d)
         Zp = np.vstack(Zp_list)  # ((T-1)*N, d)
@@ -183,15 +247,18 @@ class KoopmanPredictor:
         state = np.asarray(state, dtype=np.float64)
         N = state.shape[0]
 
-        # Denormalisation scale
-        norm = np.array([100.0, 100.0, 3.0, 3.0], dtype=np.float64)
+        # NOTE on history: the original readout multiplied the linear W-decode
+        # by norm=[100,100,3,3] even though W was fitted on raw states, which
+        # scaled positions 100x too large (~5000 m RMSE). We now use a
+        # structured toroidal decode (atan2 on the Fourier pair), which is the
+        # exact inverse of the lifting map and continuous across the wrap.
 
         Z = self.lift(state)        # (N, d)  current lifted state
         forecast = np.empty((h, N, 4), dtype=np.float32)
 
         for step in range(h):
             Z = (self.K @ Z.T).T    # (N, d)  apply K
-            x_hat = (self.W @ Z.T).T * norm   # (N, 4)  decode + denorm
+            x_hat = self._decode(Z)           # (N, 4)  toroidal decode
             forecast[step] = x_hat.astype(np.float32)
 
         return forecast
