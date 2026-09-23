@@ -126,9 +126,11 @@ class GNNPredictor:
         )
 
         # Output head: hidden -> STATE_DIM  (predict delta)
+        # Zero-initialised: the untrained network therefore outputs the
+        # zero-delta predictor (already a decent one-step baseline), and
+        # training only has to learn CORRECTIONS on top of it.
         rng = np.random.default_rng(seed + 2)
-        scale = np.sqrt(2.0 / (hidden + self.STATE_DIM))
-        self.W_out = rng.standard_normal((self.STATE_DIM, hidden)) * scale
+        self.W_out = np.zeros((self.STATE_DIM, hidden))
         self.b_out = np.zeros(self.STATE_DIM)
 
     # ── Forward pass ──────────────────────────────────────────────────────────
@@ -149,16 +151,22 @@ class GNNPredictor:
         edge_index = graph["edge_index"]                           # (2, E)
         edge_attr  = graph["edge_attr"].astype(np.float64)        # (E, 1)
 
-        # Normalise node features
-        norm = np.array([100.0, 100.0, 3.0, 3.0])
+        # Normalize node features: positions by world size, velocities by
+        # max speed -> all features O(1). (Previously hardcoded [100,100,3,3],
+        # inconsistent with cfg.)
+        world  = float(self.cfg["swarm"]["world_size"])
+        max_sp = float(self.cfg["physics"]["max_speed"])
+        norm = np.array([world, world, max_sp, max_sp])
         h = node_feat / norm                                       # (N, 4)
 
         # Two MP layers
         h = self.layer1.forward(h, edge_index, edge_attr)         # (N, hidden)
         h = self.layer2.forward(h, edge_index, edge_attr)         # (N, hidden)
 
-        # Output head
+        # Output head: delta in NORMALIZED units -> convert back to raw units
+        # so callers can do `state + delta` directly.
         delta = h @ self.W_out.T + self.b_out                     # (N, 4)
+        delta = delta * norm
         return delta.astype(np.float32)
 
     # ── Multi-step forecast ───────────────────────────────────────────────────
@@ -187,17 +195,20 @@ class GNNPredictor:
 
         state = np.asarray(state, dtype=np.float32)
         world = float(self.cfg["swarm"]["world_size"])
+        max_sp = float(self.cfg["physics"]["max_speed"])
         forecast = np.empty((h, state.shape[0], 4), dtype=np.float32)
 
         cur = state.copy()
         for step in range(h):
-            graph = build_graph(cur, radius)
-            delta = self.forward(graph)             # (N, 4)
+            # toroidal proximity graph — matches SwarmEnv's wrap-around physics
+            graph = build_graph(cur, radius, world_size=world)
+            # feature normalization happens inside forward()
+            delta = self.forward(graph)             # (N, 4)  raw units
             cur   = cur + delta
-            # Clip positions to arena, cap speed
-            cur[:, :2] = np.clip(cur[:, :2], 0.0, world)
+            # Wrap positions on the torus (clip ≠ sim physics; clip causes
+            # stuck-at-wall artifacts and compounds over the rollout)
+            cur[:, :2] = np.mod(cur[:, :2], world)
             speeds = np.linalg.norm(cur[:, 2:], axis=1, keepdims=True)
-            max_sp = float(self.cfg["physics"]["max_speed"])
             scale  = np.where(speeds > max_sp, max_sp / speeds.clip(min=1e-9), 1.0)
             cur[:, 2:] = cur[:, 2:] * scale
             forecast[step] = cur

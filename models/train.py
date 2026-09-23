@@ -72,20 +72,13 @@ def train_koopman(
     train_data = load_dataset("train", out_dir=data_dir)["episodes"]  # (E_tr, T, N, 4)
     val_data   = load_dataset("val",   out_dir=data_dir)["episodes"]  # (E_val, T, N, 4)
 
-    # ── 2. Fit on all training episodes (stack into one big trajectory) ───────
+    # ── 2. Fit on ALL training episodes ───────────────────────────────────────
     model = KoopmanPredictor(cfg, seed=int(cfg.get("seed", 42)))
 
-    # Use first training episode for the primary EDMD fit
-    # Then online-update with remaining episodes for diversity
-    model.fit(train_data[0].astype(np.float64))
-
-    # RLS mini-updates from remaining train episodes (one pair per episode)
-    for ep in train_data[1:]:
-        T = ep.shape[0]
-        t = np.random.default_rng(42).integers(0, T - 1)
-        z0 = model.lift(ep[t]).mean(axis=0)
-        z1 = model.lift(ep[t + 1]).mean(axis=0)
-        model.update(z0, z1)
+    # Stack every training episode into ONE EDMD least-squares problem:
+    # K is fitted on the full training distribution, not a single episode.
+    # (Batch EDMD subsumes the old single-episode fit + RLS snapshot updates.)
+    model.fit(train_data.astype(np.float64))
 
     # ── 3. Compute one-step MSE on train and val ──────────────────────────────
     train_mse = _eval_one_step_mse(model, train_data)
